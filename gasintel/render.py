@@ -26,10 +26,10 @@ def retire_intel_tab(base: str) -> str:
     # 1. remove the Intelligence tab button (covers the emoji + label)
     base = re.sub(r"<button class=\"tab active\" onclick=\"stab\('intel'\)\">.*?</button>",
                   "", base, count=1)
-    # 2. promote Storage Overview to the default active tab
+    # 2. promote Storage Overview to the default active tab (only one occurrence)
     base = base.replace('<button class="tab" onclick="stab(\'overview\')">',
-                        '<button class="tab active" onclick="stab(\'overview\')">', 1)
-    # 3. default the initial view to overview (remaining stab('intel') is in init)
+                        '<button class="tab active" onclick="stab(\'overview\')">')
+    # 3. default the initial view to overview (remaining stab('intel') is the init call)
     base = base.replace("stab('intel')", "stab('overview')")
     return base
 
