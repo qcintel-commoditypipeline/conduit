@@ -44,7 +44,7 @@ def _facts(analytics: dict, news: list) -> str:
         lines.append("No storage/price anomalies vs seasonal norms today.")
     behind = [f"{e} {t['projected_fill']:.0f}%" for e, t in
               analytics.get("trajectory", {}).items()
-              if not t.get("on_track") and t.get("pace_pp_per_day", 0) > 0 and e != "EU"]
+              if not t.get("on_track") and t.get("shortfall_pp", 0) >= 2 and e != "EU"]
     if behind:
         lines.append("Countries projected below 90%: " + ", ".join(behind[:10]))
     if bal.get("available") and bal.get("by_corridor"):

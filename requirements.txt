@@ -1,0 +1,8 @@
+# Conduit — pinned to the versions on the lon1 shared venv (Python 3.12).
+requests==2.33.1
+python-dotenv==1.0.1
+Jinja2==3.1.6
+anthropic==0.40.0
+openpyxl==3.1.5
+# pandas/numpy are available in the shared venv but not required by the
+# pipeline itself (analytics use the stdlib statistics module).

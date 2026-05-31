@@ -9,6 +9,7 @@ that actually matters in injection season:
 from __future__ import annotations
 
 from datetime import datetime, date
+from statistics import median
 
 from .. import store
 from ..config import (COUNTRIES, STORAGE_TARGET_PCT, STORAGE_TARGET_MONTH,
@@ -21,6 +22,41 @@ PACE_WINDOW_DAYS = 14
 def _next_target_date(today: date) -> date:
     t = date(today.year, STORAGE_TARGET_MONTH, STORAGE_TARGET_DAY)
     return t if today <= t else date(today.year + 1, STORAGE_TARGET_MONTH, STORAGE_TARGET_DAY)
+
+
+def _seasonal_gain(series, cur_year: int, doy_now: int, doy_tgt: int,
+                   window: int) -> float | None:
+    """Median historical fill gain from `doy_now` to `doy_tgt`, per past year.
+
+    This is the realistic refill expectation: how much fill % storage has
+    typically *added* over this calendar stretch in prior years. Captures the
+    natural tapering of injection as tanks fill — unlike a linear extrapolation
+    of the current daily pace, which overshoots badly over a 5-month horizon.
+    """
+    by_year: dict[int, list[tuple[int, float]]] = {}
+    for r in series:
+        if r["fill"] is None:
+            continue
+        d = datetime.strptime(r["gas_day"], "%Y-%m-%d")
+        if d.year == cur_year:
+            continue
+        by_year.setdefault(d.year, []).append((d.timetuple().tm_yday, r["fill"]))
+
+    def nearest(points, doy):
+        best, bestd = None, 1e9
+        for pd, pf in points:
+            dist = min(abs(pd - doy), 365 - abs(pd - doy))
+            if dist < bestd:
+                best, bestd = pf, dist
+        return best if bestd <= window else None
+
+    gains = []
+    for pts in by_year.values():
+        f_now = nearest(pts, doy_now)
+        f_tgt = nearest(pts, doy_tgt)
+        if f_now is not None and f_tgt is not None:
+            gains.append(f_tgt - f_now)
+    return round(median(gains), 1) if gains else None
 
 
 def _entity_trajectory(conn, entity: str, run_date: str) -> dict | None:
@@ -47,16 +83,26 @@ def _entity_trajectory(conn, entity: str, run_date: str) -> dict | None:
         return None
     ref_day = datetime.strptime(ref["gas_day"], "%Y-%m-%d").date()
     span = (cur_day - ref_day).days or 1
-    pace = (cur_fill - ref["fill"]) / span  # pp per day
+    pace = (cur_fill - ref["fill"]) / span  # pp per day, recent
 
     target_date = _next_target_date(cur_day)
     days_to_target = (target_date - cur_day).days
-    projected = cur_fill + pace * days_to_target if pace > 0 else cur_fill
+    doy_now = cur_day.timetuple().tm_yday
+    doy_tgt = target_date.timetuple().tm_yday
+
+    # Realistic projection: current fill + typical historical gain over this
+    # calendar stretch. Falls back to (capped) linear pace only if there's no
+    # seasonal history to lean on.
+    gain = _seasonal_gain(series, cur_day.year, doy_now, doy_tgt, SEASONAL_DOY_WINDOW)
+    if gain is not None:
+        projected = cur_fill + gain
+        proj_method = "seasonal"
+    else:
+        projected = cur_fill + pace * days_to_target if pace > 0 else cur_fill
+        proj_method = "pace"
     projected = max(0.0, min(100.0, projected))
 
     # seasonal context: normal fill now and at the target date
-    doy_now = cur_day.timetuple().tm_yday
-    doy_tgt = target_date.timetuple().tm_yday
     dist_now = store.doy_distribution(conn, "storage_daily", "fill", "country",
                                       entity, doy_now, SEASONAL_DOY_WINDOW,
                                       exclude_year=cur_day.year)
@@ -72,6 +118,8 @@ def _entity_trajectory(conn, entity: str, run_date: str) -> dict | None:
         "as_of": last["gas_day"],
         "current_fill": round(cur_fill, 1),
         "pace_pp_per_day": round(pace, 3),
+        "seasonal_gain_pp": gain,
+        "proj_method": proj_method,
         "days_to_target": days_to_target,
         "target_date": target_date.isoformat(),
         "target_pct": STORAGE_TARGET_PCT,

@@ -58,20 +58,28 @@ def _fill_signals(conn):
     return out
 
 
-def _trajectory_signals(traj):
+def _trajectory_signals(traj, top_n: int = 5):
+    """Worst refill shortfalls only — the 'Countries Behind' card and the refill
+    table carry the full list, so we surface just the most acute here (EU always
+    included) to keep the signal panel from flooding in a low-storage year."""
+    cand = [(e, t) for e, t in (traj or {}).items()
+            if not t.get("on_track") and t.get("shortfall_pp", 0) >= 2]
+    cand.sort(key=lambda kv: -kv[1]["shortfall_pp"])
+    keep = [kv for kv in cand if kv[0] == "EU"][:1]
+    keep += [kv for kv in cand if kv[0] != "EU"][:top_n]
     out = []
-    for e, t in (traj or {}).items():
-        if t.get("on_track") or t.get("pace_pp_per_day", 0) <= 0:
-            continue
+    for e, t in keep:
+        basis = ("following the typical seasonal refill"
+                 if t.get("proj_method") == "seasonal" else "at current pace")
         out.append({
             "category": "refill", "entity": e,
             "severity": "red" if t["shortfall_pp"] >= 8 else "amber",
             "score": 1 + t["shortfall_pp"] / 10,
             "headline": (f"{_flag(e)} {_name(e)} projected {t['projected_fill']:.0f}% "
                          f"by Nov 1 — {t['shortfall_pp']:.0f}pp short of target"),
-            "detail": (f"at current pace {t['pace_pp_per_day']:.2f}pp/day; "
-                       f"now {t['current_fill']:.0f}% vs ~{t['normal_now_avg']:.0f}% "
-                       f"seasonal norm" if t.get("normal_now_avg") else ""),
+            "detail": (f"{basis}; now {t['current_fill']:.0f}%"
+                       + (f" vs ~{t['normal_now_avg']:.0f}% seasonal norm"
+                          if t.get("normal_now_avg") else "")),
         })
     return out
 

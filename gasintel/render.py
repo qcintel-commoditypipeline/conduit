@@ -120,8 +120,8 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
     ttf = spreads.get("ttf") or {}
     run = analytics.get("run_date", datetime.utcnow().strftime("%Y-%m-%d"))
 
-    behind = sum(1 for t in traj.values() if not t.get("on_track")
-                 and t.get("pace_pp_per_day", 0) > 0)
+    behind = sum(1 for e, t in traj.items() if e != "EU"
+                 and not t.get("on_track") and t.get("shortfall_pp", 0) >= 2)
     chart_pts = [{"x": r["trade_day"], "y": r["price"]} for r in (ttf_series or [])][-120:]
 
     eu_fill = eu.get("current_fill")
