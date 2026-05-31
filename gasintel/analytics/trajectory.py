@@ -30,15 +30,21 @@ def _entity_trajectory(conn, entity: str, run_date: str) -> dict | None:
     last = series[-1]
     cur_day = datetime.strptime(last["gas_day"], "%Y-%m-%d").date()
     cur_fill = last["fill"]
+    if cur_fill is None:
+        return None
 
     # pace: fill %/day over the trailing window
     ref = None
     for r in reversed(series[:-1]):
+        if r["fill"] is None:
+            continue
         d = datetime.strptime(r["gas_day"], "%Y-%m-%d").date()
         if (cur_day - d).days >= PACE_WINDOW_DAYS:
             ref = r
             break
     ref = ref or series[0]
+    if ref["fill"] is None:
+        return None
     ref_day = datetime.strptime(ref["gas_day"], "%Y-%m-%d").date()
     span = (cur_day - ref_day).days or 1
     pace = (cur_fill - ref["fill"]) / span  # pp per day
@@ -82,7 +88,11 @@ def _entity_trajectory(conn, entity: str, run_date: str) -> dict | None:
 def compute(conn, run_date: str) -> dict:
     out = {}
     for entity in ["EU"] + [uc for _, uc, _, _ in COUNTRIES]:
-        t = _entity_trajectory(conn, entity, run_date)
+        try:
+            t = _entity_trajectory(conn, entity, run_date)
+        except Exception as e:  # noqa: BLE001 — one bad entity must not kill the run
+            print(f"  ⚠ trajectory {entity} skipped: {e}")
+            t = None
         if t:
             out[entity] = t
     return out
