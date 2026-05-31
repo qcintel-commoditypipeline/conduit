@@ -42,3 +42,6 @@ Thumbs.db
 _*.log
 _*.json
 _*.txt
+
+# local agent settings (machine/trust-specific — keep out of git)
+.claude/
