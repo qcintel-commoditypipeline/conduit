@@ -12,7 +12,7 @@ import os
 
 import requests
 
-MODEL = os.getenv("CONDUIT_BRIEF_MODEL", "claude-3-5-sonnet-latest")
+MODEL = os.getenv("CONDUIT_BRIEF_MODEL", "claude-sonnet-4-5")
 SYSTEM = (
     "You are a European gas market analyst writing a terse morning sitrep for a "
     "trading/pricing desk. Use ONLY the figures provided — never invent numbers. "
