@@ -146,6 +146,21 @@ METRIC_COLS = ("metric", "entity", "gas_day", "value")
 
 
 def upsert_storage(conn, rows): return _upsert(conn, "storage_daily", STORAGE_COLS, rows)
+
+
+def upsert_storage_fill(conn, rows):
+    """Fill-only upsert for seasonality backfill — never clobbers richer columns
+    (gas_twh, injection, ...) already stored for a day."""
+    rows = [r for r in rows if r and r.get("fill") is not None]
+    if not rows:
+        return 0
+    conn.executemany(
+        "INSERT INTO storage_daily (country, gas_day, fill, source) VALUES (?,?,?,?) "
+        "ON CONFLICT(country, gas_day) DO UPDATE SET fill=excluded.fill",
+        [(r["country"], r["gas_day"], r["fill"], r.get("source", "seasonality"))
+         for r in rows],
+    )
+    return len(rows)
 def upsert_lng(conn, rows): return _upsert(conn, "lng_daily", LNG_COLS, rows)
 def upsert_flows(conn, rows): return _upsert(conn, "flow_daily", FLOW_COLS, rows)
 def upsert_prices(conn, rows): return _upsert(conn, "price_daily", PRICE_COLS, rows)
