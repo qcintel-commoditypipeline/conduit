@@ -15,6 +15,25 @@ from html import escape
 from .config import COUNTRY_NAME, COUNTRY_FLAG
 
 
+def retire_intel_tab(base: str) -> str:
+    """Drop the legacy 'Intelligence' tab from the base dashboard.
+
+    The new Sitrep hero replaces it entirely; leaving the old tab in place shows
+    duplicate (and winter-only / often n/a) alerts and metrics. We remove its tab
+    button, default the view to Storage Overview, and the old `tab-intel` content
+    div — being class `tc` (hidden unless active) — then never displays.
+    """
+    # 1. remove the Intelligence tab button (covers the emoji + label)
+    base = re.sub(r"<button class=\"tab active\" onclick=\"stab\('intel'\)\">.*?</button>",
+                  "", base, count=1)
+    # 2. promote Storage Overview to the default active tab
+    base = base.replace('<button class="tab" onclick="stab(\'overview\')">',
+                        '<button class="tab active" onclick="stab(\'overview\')">', 1)
+    # 3. default the initial view to overview (remaining stab('intel') is in init)
+    base = base.replace("stab('intel')", "stab('overview')")
+    return base
+
+
 def _name(e): return "EU aggregate" if e == "EU" else COUNTRY_NAME.get(e, e)
 def _flag(e): return "🇪🇺" if e == "EU" else COUNTRY_FLAG.get(e, "")
 
@@ -42,13 +61,16 @@ def _signals_html(signals):
     out = ""
     for s in signals[:8]:
         rgb = "248,113,113" if s["severity"] == "red" else "251,191,36"
-        out += (f'<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 14px;'
+        cls = "red" if s["severity"] == "red" else "orange"
+        detail = escape(s.get("detail") or "")
+        out += (f'<div style="padding:10px 14px;'
                 f'background:rgba({rgb},.06);border:1px solid rgba({rgb},.16);border-radius:8px;'
-                f'margin-bottom:7px;font-family:\'IBM Plex Mono\',monospace;font-size:12px">'
-                f'<span class="{s["severity"] == "red" and "red" or "orange"}" '
-                f'style="font-weight:600">{escape(s["headline"])}</span>'
-                f'<span class="dim" style="margin-left:auto;white-space:nowrap">'
-                f'{escape(s.get("detail") or "")}</span></div>')
+                f'margin-bottom:7px;font-family:\'IBM Plex Mono\',monospace">'
+                f'<div class="{cls}" style="font-weight:600;font-size:12px;line-height:1.45">'
+                f'{escape(s["headline"])}</div>'
+                + (f'<div class="dim" style="font-size:11px;line-height:1.45;margin-top:3px">'
+                   f'{detail}</div>' if detail else "")
+                + '</div>')
     return out
 
 
@@ -122,7 +144,9 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
 
     behind = sum(1 for e, t in traj.items() if e != "EU"
                  and not t.get("on_track") and t.get("shortfall_pp", 0) >= 2)
-    chart_pts = [{"x": r["trade_day"], "y": r["price"]} for r in (ttf_series or [])][-120:]
+    series = (ttf_series or [])[-120:]
+    chart_labels = [r["trade_day"] for r in series]
+    chart_vals = [r["price"] for r in series]
 
     eu_fill = eu.get("current_fill")
     eu_vs = eu.get("vs_normal_now_pp")
@@ -132,7 +156,7 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
     ttf_chg = ttf.get("chg_1d_pct")
     ttf_col = "green" if (ttf_chg or 0) > 0 else ("red" if (ttf_chg or 0) < 0 else "dim")
 
-    cards = f'''<div class="mg" style="grid-template-columns:repeat(4,1fr)">
+    cards = f'''<div class="mg" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
 <div class="mc"><div class="mc-accent" style="background:linear-gradient(90deg,var(--ac),transparent)"></div>
 <div class="mc-lbl">EU Storage</div><div class="mc-val accent">{eu_fill:.0f}%</div>
 <div class="mc-sub">{_vs_norm_cell(eu_vs)} vs 5yr norm</div></div>
@@ -155,10 +179,12 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
   function draw(){{
     if(typeof Chart==='undefined'){{return setTimeout(draw,200);}}
     var el=document.getElementById('sitrepTTF'); if(!el||el._done)return; el._done=1;
-    new Chart(el,{{type:'line',data:{{datasets:[{{label:'TTF',data:{json.dumps(chart_pts)},
+    new Chart(el,{{type:'line',data:{{labels:{json.dumps(chart_labels)},
+      datasets:[{{label:'TTF',data:{json.dumps(chart_vals)},
       borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',fill:true,borderWidth:2,
       pointRadius:0,tension:.25}}]}},options:{{responsive:true,maintainAspectRatio:false,
-      plugins:{{legend:{{display:false}}}},scales:{{x:{{type:'category',ticks:{{maxTicksLimit:8,
+      plugins:{{legend:{{display:false}},tooltip:{{intersect:false,mode:'index'}}}},
+      scales:{{x:{{ticks:{{maxTicksLimit:6,autoSkip:true,
       color:'#5e6e84',font:{{size:9}}}},grid:{{display:false}}}},y:{{ticks:{{color:'#5e6e84',
       font:{{size:10}},callback:function(v){{return v+'€'}}}},grid:{{color:'#1a2332'}}}}}}}});
   }}
