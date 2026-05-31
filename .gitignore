@@ -1,0 +1,39 @@
+# ── Generated artifacts ──
+gas_dashboard.html
+gas_cache.json
+natgas_catalogue.json
+refresh.log
+conduit.log
+
+# ── Data store ──
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ── Secrets ──
+.env
+.env.*
+!.env.template
+qci_token.txt
+*token*.txt
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# ── Large reference data (kept out of git; staged on box) ──
+*.xlsx
+
+# ── OS / editor ──
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
