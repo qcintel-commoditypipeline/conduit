@@ -9,6 +9,7 @@ monolith's tabs untouched as detail/fallback views.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from html import escape
 
