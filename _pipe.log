@@ -13,25 +13,26 @@
   ✓ TTF: 46.00 EUR/MWh (+3.0%)
 
 🗺  Countries...
-  ✓ 🇦🇹 Austria: 46.02%
+  ✓ 🇨🇿 Czechia: 36.71%
   ✓ 🇭🇷 Croatia: 29.73%
   ✓ 🇧🇬 Bulgaria: 23.88%
-  ✓ 🇨🇿 Czechia: 36.71%
+  ✓ 🇦🇹 Austria: 46.02%
   ✓ 🇧🇪 Belgium: 21.57%
-  ✓ 🇩🇰 Denmark: 43.98%
   ✓ 🇫🇷 France: 41.23%
-  ✓ 🇩🇪 Germany: 32.09%
+  ✓ 🇩🇰 Denmark: 43.98%
   ✓ 🇭🇺 Hungary: 43.58%
+  ✓ 🇩🇪 Germany: 32.09%
   ✓ 🇮🇹 Italy: 58.41%
-  ✓ 🇱🇻 Latvia: 32.55%
   ✓ 🇳🇱 Netherlands: 15.5%
+  ✓ 🇱🇻 Latvia: 32.55%
+  ✓ 🇷🇴 Romania: 37.96%
   ✓ 🇵🇱 Poland: 55.84%
-  ✓ 🇵🇹 Portugal: 83.33%
   🇬🇧 National Gas (primary)...
     Requesting 34 publication IDs...
-  ✓ 🇷🇴 Romania: 37.96%
-  ✓ 🇪🇸 Spain: 70.35%
+  ✓ 🇵🇹 Portugal: 83.33%
   ✓ 🇸🇰 Slovakia: 31.43%
+  ✓ 🇪🇸 Spain: 70.35%
+  ✓ 🇸🇪 Sweden: 9.95%
     ✓ storage_avail_cap: 32.351 TWh — Storage, Daily Aggregated Available Capacity, D+1
     ✓ storage_inflows: 0.138 TWh — Storage, Daily Aggregated Inflows, D+1
     ✓ storage_outflows: 0.000 TWh — Storage, Daily Aggregated Outflows, D+1
@@ -42,7 +43,6 @@
     ✓ Per-facility inflows: 138.4 GWh (9 sites)
     ✓ Per-facility outflows: 0.0 GWh (9 sites)
     → GB (National Gas): 8.8% | 3.116 TWh / 35.467 TWh WGV
-  ✓ 🇸🇪 Sweden: 9.95%
   ✓ 🇺🇦 Ukraine: 21.58%
 
 📈 Seasonality...
@@ -81,11 +81,11 @@
 
   [5/21] Croatia:
     2026: fetching... ✓ 150 days
-    2025: fetching... ✗
+    2025: fetching... ✓ 365 days
     2024: fetching... ✓ 366 days
     2023: fetching... ✓ 365 days
     2022: fetching... ✓ 365 days
-    2021: fetching... ✓ 300 days
+    2021: fetching... ✓ 365 days
 
   [6/21] Czechia:
     2026: fetching... ✓ 150 days
@@ -100,7 +100,7 @@
     2025: fetching... ✓ 365 days
     2024: fetching... ✓ 366 days
     2023: fetching... ✓ 365 days
-    2022: fetching... ✓ 365 days
+    2022: fetching... ✗
     2021: fetching... ✓ 365 days
 
   [8/21] France:
