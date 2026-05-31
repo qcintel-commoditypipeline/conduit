@@ -1,0 +1,113 @@
+"""
+The deviation engine: scan every series for what's abnormal *for this time of
+year* and emit ranked signals. Replaces the old winter-only threshold alerts
+that fell silent all summer.
+
+Signals are scored (higher = more noteworthy) and tagged red/amber so the brief
+and the Sitrep tab can lead with what matters. Baselines that don't exist yet
+(e.g. injection history before the store has accumulated it) are skipped
+gracefully — fill (years of history) and price (2y) work from day one.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+from .. import store
+from ..config import COUNTRIES, COUNTRY_NAME, COUNTRY_FLAG, SEASONAL_DOY_WINDOW
+from . import seasonal
+
+ENTITIES = ["EU"] + [uc for _, uc, _, _ in COUNTRIES]
+
+
+def _name(entity):
+    return "EU aggregate" if entity == "EU" else COUNTRY_NAME.get(entity, entity)
+
+
+def _flag(entity):
+    return "🇪🇺" if entity == "EU" else COUNTRY_FLAG.get(entity, "")
+
+
+def _sev(pct):
+    if pct is None:
+        return "amber"
+    return "red" if (pct <= 5 or pct >= 95) else "amber"
+
+
+def _fill_signals(conn):
+    out = []
+    for e in ENTITIES:
+        last = store.latest_storage(conn, e)
+        if not last or last["fill"] is None:
+            continue
+        d = datetime.strptime(last["gas_day"], "%Y-%m-%d")
+        dist = store.doy_distribution(conn, "storage_daily", "fill", "country",
+                                      e, d.timetuple().tm_yday,
+                                      SEASONAL_DOY_WINDOW, exclude_year=d.year)
+        a = seasonal.assess(last["fill"], dist)
+        if not seasonal.is_extreme(a):
+            continue
+        b = a["band"]
+        out.append({
+            "category": "storage_fill", "entity": e,
+            "severity": _sev(a["percentile"]), "score": abs(a["z"] or 0) + 1,
+            "headline": f"{_flag(e)} {_name(e)} storage {a['value']:.0f}% — {a['label']}",
+            "detail": (f"{a['percentile']:.0f}th percentile for this date "
+                       f"(5yr {b['min']:.0f}–{b['max']:.0f}%, avg {b['avg']:.0f}%)"
+                       if b else a["label"]),
+        })
+    return out
+
+
+def _trajectory_signals(traj):
+    out = []
+    for e, t in (traj or {}).items():
+        if t.get("on_track") or t.get("pace_pp_per_day", 0) <= 0:
+            continue
+        out.append({
+            "category": "refill", "entity": e,
+            "severity": "red" if t["shortfall_pp"] >= 8 else "amber",
+            "score": 1 + t["shortfall_pp"] / 10,
+            "headline": (f"{_flag(e)} {_name(e)} projected {t['projected_fill']:.0f}% "
+                         f"by Nov 1 — {t['shortfall_pp']:.0f}pp short of target"),
+            "detail": (f"at current pace {t['pace_pp_per_day']:.2f}pp/day; "
+                       f"now {t['current_fill']:.0f}% vs ~{t['normal_now_avg']:.0f}% "
+                       f"seasonal norm" if t.get("normal_now_avg") else ""),
+        })
+    return out
+
+
+def _price_signals(spreads):
+    out = []
+    ttf = (spreads or {}).get("ttf")
+    if not ttf:
+        return out
+    if ttf.get("chg_1d_pct") is not None and abs(ttf["chg_1d_pct"]) >= 5:
+        up = ttf["chg_1d_pct"] > 0
+        out.append({
+            "category": "price", "entity": "TTF",
+            "severity": "red" if abs(ttf["chg_1d_pct"]) >= 8 else "amber",
+            "score": abs(ttf["chg_1d_pct"]) / 5,
+            "headline": f"TTF {ttf['last']:.1f} €/MWh, {ttf['chg_1d_pct']:+.1f}% on the day",
+            "detail": f"{'+' if up else ''}{ttf['chg_1d_abs']:.2f} €/MWh; "
+                      f"{ttf['year_percentile']:.0f}th percentile of the past year",
+        })
+    yp = ttf.get("year_percentile")
+    if yp is not None and (yp >= 92 or yp <= 8):
+        out.append({
+            "category": "price", "entity": "TTF",
+            "severity": "amber", "score": 1.5,
+            "headline": f"TTF {ttf['last']:.1f} €/MWh — "
+                        f"{'near 1-yr highs' if yp >= 92 else 'near 1-yr lows'}",
+            "detail": f"{yp:.0f}th percentile of the trailing year",
+        })
+    return out
+
+
+def build_signals(conn, run_date: str, analytics: dict) -> list[dict]:
+    sigs = []
+    sigs += _fill_signals(conn)
+    sigs += _trajectory_signals(analytics.get("trajectory"))
+    sigs += _price_signals(analytics.get("spreads"))
+    sev_rank = {"red": 0, "amber": 1}
+    sigs.sort(key=lambda s: (sev_rank.get(s["severity"], 2), -s["score"]))
+    return sigs
