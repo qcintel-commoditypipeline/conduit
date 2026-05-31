@@ -1,0 +1,13 @@
+📈 seasonality backfill...
+  ✓ seasonality: 45207 fill rows from /opt/scripts/conduit/gas_cache.json (2021-01-01 → 2026-05-30)
+💰 price backfill...
+  ✓ price TTF: 502 days
+  ✓ price NG: 502 days
+  ✓ prices: 1004 rows
+
+Store summary:
+  storage_daily: 45207
+  lng_daily: 0
+  flow_daily: 0
+  price_daily: 1004
+exit=0

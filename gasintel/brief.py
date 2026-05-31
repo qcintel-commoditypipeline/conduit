@@ -79,6 +79,9 @@ def generate(analytics: dict, news: list) -> str | None:
 
 
 def deliver_telegram(text: str) -> bool:
+    if os.getenv("CONDUIT_NO_PUSH"):
+        print("  · brief delivery suppressed (CONDUIT_NO_PUSH)")
+        return False
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat = os.getenv("TELEGRAM_CHAT_ID")
     if not (token and chat and text):
