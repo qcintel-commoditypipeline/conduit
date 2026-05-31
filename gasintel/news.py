@@ -22,9 +22,12 @@ _GAS_KW = re.compile(
 
 
 def _token():
-    for k in ("QCI_JWT", "QCINTEL_API_TOKEN", "QCINTEL_TOKEN"):
+    # The QCI article API wants the JWT bearer (QCINTEL_TOKEN / QCI_JWT, ~1KB,
+    # "eyJ..."), NOT the short QCINTEL_API_TOKEN — so prefer the JWT. Flare uses
+    # the same JWT via qci_token.txt.
+    for k in ("QCI_JWT", "QCINTEL_TOKEN", "QCINTEL_API_TOKEN"):
         v = os.getenv(k)
-        if v:
+        if v and len(v) > 40:  # skip the short non-JWT api token
             return v
     for p in (Path("/opt/scripts/flare/qci_token.txt"),
               Path(__file__).parent.parent / "qci_token.txt"):
