@@ -45,25 +45,32 @@ def backfill_prices(conn, rng: str) -> None:
     print(f"  ✓ prices: {n} rows")
 
 
-def _month_chunks(years: int):
+def _date_chunks(years: int, chunk_days: int = 7):
+    """Walk the period in small windows.
+
+    ENTSOG's operationaldatas endpoint silently returns 0 records when a single
+    (range x points) query with limit=-1 is too large — a ~30-day window comes
+    back empty, while ~8-day windows return thousands of records reliably, even
+    years back. So we chunk by a week.
+    """
     end = datetime.utcnow().date()
     start = end - timedelta(days=int(years * 365.25))
-    cur = start.replace(day=1)
+    cur = start
     while cur <= end:
-        nxt = (cur.replace(day=28) + timedelta(days=7)).replace(day=1)
-        yield cur.strftime("%Y-%m-%d"), min(nxt - timedelta(days=1), end).strftime("%Y-%m-%d")
+        nxt = min(cur + timedelta(days=chunk_days), end + timedelta(days=1))
+        yield cur.strftime("%Y-%m-%d"), nxt.strftime("%Y-%m-%d")
         cur = nxt
 
 
 def backfill_flows(conn, years: int) -> None:
     total = 0
-    for lo, hi in _month_chunks(years):
+    for lo, hi in _date_chunks(years):
         rows = sources.fetch_flows(lo, hi)
         n = store.upsert_flows(conn, rows)
         conn.commit()
         total += n
         print(f"    {lo}..{hi}: {n} flow rows (total {total})")
-        time.sleep(1.0)
+        time.sleep(0.5)
     print(f"  ✓ flows: {total} rows")
 
 
