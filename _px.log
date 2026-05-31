@@ -1,3 +1,0 @@
-TYPE Row
-DICTKEYS ['trade_day', 'price']
-FIRST {'trade_day': '2026-05-27', 'price': 46.413}

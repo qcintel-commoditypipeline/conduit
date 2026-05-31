@@ -37,3 +37,7 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# diagnostic scratch
+_*.log
+_*.json
