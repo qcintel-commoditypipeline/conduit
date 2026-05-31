@@ -41,3 +41,4 @@ Thumbs.db
 # diagnostic scratch
 _*.log
 _*.json
+_*.txt
