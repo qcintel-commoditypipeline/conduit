@@ -1,70 +1,116 @@
-# ⚡ European Gas Intelligence Dashboard
+# Conduit — European Gas Market Intelligence
 
-A Python-powered dashboard that fetches live European gas data and generates 
-a beautiful interactive HTML report you can view in your browser.
+A daily pipeline that turns raw European gas data into a persisted time series
+and a ranked, seasonally-aware **sitrep** — storage, refill outlook, cross-border
+supply, LNG, prices and news in one self-contained dashboard, plus an optional
+Claude-written morning brief pushed to Telegram.
 
-## Data Sources
-- **GIE AGSI** — Gas storage levels (fill %, injection, withdrawal) for every EU country
-- **GIE ALSI** — LNG terminal inventory, send-out rates, and capacity utilization
-- **ENTSOG Transparency Platform** — Cross-border pipeline physical flows
+Live: **http://165.232.110.29/conduit/**
 
-## Quick Start (Windows)
+---
 
-### 1. Install the one dependency
+## What it does
 
-Open **Command Prompt** (search "cmd" in Start menu) and run:
+Each morning (after GIE publishes, ~08:00 UTC) the pipeline:
+
+1. **Fetches** storage (GIE AGSI), LNG (GIE ALSI), pipeline flows (ENTSOG),
+   UK storage/flows (National Gas), prices (Yahoo: TTF, Henry Hub) and weather
+   (Open-Meteo HDD).
+2. **Persists** everything to a SQLite store — the memory the original snapshot
+   script never had. This is what makes trends, anomalies and projections possible.
+3. **Analyses**: seasonal-normal deviations, refill trajectory vs the 90%/Nov-1
+   mandate, cross-border supply by corridor, and price context. Emits ranked
+   **signals**.
+4. **Briefs**: Claude narrates the signals into a short plain-English sitrep and
+   (optionally) pushes it to Telegram. The LLM only narrates computed numbers —
+   it never invents figures.
+5. **Renders** an always-on Sitrep hero block on top of the existing dashboard
+   tabs (storage / seasonality / map / LNG / flows).
+
+### Why it's different from the old script
+The original `gas_dashboard.py` was a single 2,000-line snapshot generator: no
+memory, and "intelligence" gated on winter withdrawal so it fell silent every
+summer. Conduit keeps that script's proven fetchers and rich HTML, but adds the
+persistence + analytics layer that was missing, so the insights work year-round.
+
+---
+
+## Architecture
 
 ```
-pip install requests
+gasintel/
+  config.py            paths, constants, country + corridor maps
+  store.py             SQLite schema + typed upserts/queries (WAL)
+  sources.py           prices (Yahoo) + flows (ENTSOG, corridor-classified)
+  persist.py           map reused fetch_all() output -> store rows
+  news.py              QC Intel gas/LNG headlines
+  brief.py             Claude narrative -> Telegram
+  render.py            Sitrep hero block (reuses dashboard CSS)
+  analytics/
+    seasonal.py        day-of-year percentile / z-score / band (winsorised)
+    deviations.py      rank what's abnormal today -> signals
+    trajectory.py      refill projection vs 90%/Nov-1 + seasonal path
+    spreads.py         price level / momentum / year-percentile
+    balance.py         cross-border supply by corridor (net, w/w)
+pipeline.py            orchestrator (the daily entrypoint)
+backfill.py            one-time history load (seasonality, prices, flows)
+gas_dashboard.py       original v6 — reused for fetchers + base HTML
+tests/                 analytics unit tests (no network)
+data/conduit.db        SQLite store (gitignored)
 ```
 
-### 2. Run the dashboard
+Each optional stage (prices, flows, news, brief, sitrep) is wrapped — any can
+fail without stopping the dashboard from being written.
 
-Navigate to the folder where you saved these files:
+---
 
+## Running
+
+```bash
+# Daily run (writes gas_dashboard.html)
+python pipeline.py
+
+# One-time history backfill
+python backfill.py --all                 # seasonality + 2y prices + 2y flows
+python backfill.py --seasonality --prices  # fast, no heavy fetching
+python backfill.py --flows --years 2
+
+# Tests
+python -m unittest discover -s tests -q
 ```
-cd C:\path\to\gas-dashboard
-python gas_dashboard.py
+
+Environment vars (from `/opt/scripts/.env`): `AGSI_KEY`, `ANTHROPIC_API_KEY`,
+`QCINTEL_API_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+`CONDUIT_NO_PUSH=1` suppresses Telegram delivery (for test runs).
+
+## Deployment (lon1 box)
+
+Source of truth is GitHub (`qcintel-commoditypipeline/conduit`). The box can't
+reach GitHub, so deploys go via a bare repo + `post-receive` checkout:
+
+```bash
+git push box main      # ssh://root@165.232.110.29/opt/git/conduit.git
+                       # -> checks out to /opt/scripts/conduit-dev
 ```
 
-That's it. The script will:
-1. Fetch live data from all three APIs (takes ~2-3 minutes)
-2. Generate `gas_dashboard.html` 
-3. Automatically open it in your default browser
+Once promoted, `conduit_run.sh` runs `pipeline.py` daily at 08:00 UTC and nginx
+serves the generated HTML at `/conduit/`.
 
-### 3. Refresh anytime
+---
 
-Just run `python gas_dashboard.py` again to pull the latest data. The HTML file 
-gets overwritten with fresh numbers each time.
+## Data sources
 
-## What's in the Dashboard
+| Source | Data | Notes |
+|--------|------|-------|
+| GIE AGSI | Underground storage | API key; daily ~08:00 UTC |
+| GIE ALSI | LNG terminals | inventory/send-out |
+| ENTSOG TP | Pipeline physical flows | public; corridor-classified |
+| National Gas (UK) | GB storage/flows | catalogue-driven, no auth |
+| Yahoo Finance | TTF, Henry Hub | front-month daily |
+| Open-Meteo | Temperature / HDD | 7-day forecast |
+| QC Intel | Gas & LNG headlines | Bearer token |
 
-| Tab | What it shows |
-|-----|---------------|
-| ⛽ **Storage Overview** | EU aggregate fill level with gauge, full country breakdown table with fill bars, injection/withdrawal, trends |
-| 📈 **Seasonality** | Current year vs 5 prior years fill trajectories (EU, Germany, Italy) with interactive Chart.js chart |
-| 🚢 **LNG Terminals** | EU LNG inventory, send-out, capacity utilization by country |
-| 🔀 **Pipeline Flows** | ENTSOG physical flow data across European interconnection points |
-
-## Notes
-
-- AGSI/ALSI data is updated daily at **19:30 CET** (second update at 23:00)
-- ENTSOG data has a 60-second API timeout; large queries may be truncated
-- The 90% storage target line references **EU Regulation 2022/1032**
-- Your AGSI API key is embedded in the script — keep it private
-- All data is fetched server-side by Python, so no CORS issues
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| `ModuleNotFoundError: No module named 'requests'` | Run `pip install requests` |
-| `python` not recognized | Try `python3 gas_dashboard.py` or `py gas_dashboard.py` |
-| AGSI returns errors | Check your API key hasn't expired at https://agsi.gie.eu/account |
-| ENTSOG timeout | Normal for large queries — the script retries automatically |
-
-## Future Enhancements
-- Add specific ENTSOG pointDirection queries for key corridors
-- Country deep-dive tab with operator/facility breakdown
-- Historical flow charts for major pipelines
-- Automated daily scheduling via Windows Task Scheduler
+## Roadmap
+- Forward curve (Barchart) for summer-winter spread + TTF-JKM.
+- Demand-vs-forecast and linepack from the National Gas catalogue.
+- Freshness/quality panel; cron-failure alerting.

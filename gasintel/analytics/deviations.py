@@ -27,15 +27,20 @@ def _flag(entity):
     return "🇪🇺" if entity == "EU" else COUNTRY_FLAG.get(entity, "")
 
 
-def _sev(pct):
-    if pct is None:
-        return "amber"
-    return "red" if (pct <= 5 or pct >= 95) else "amber"
+def _fill_signals(conn, skip_entities=frozenset()):
+    """Storage unusually low/high vs seasonal norm.
 
-
-def _fill_signals(conn):
+    Low-side is the risk signal (red/amber). High-side is informational only and
+    additionally requires the tank to be genuinely full in absolute terms (>55%)
+    — without that guard, a market that's merely less-drawn than its crisis-era
+    history reads as a misleading "exceptionally high" headline (e.g. GB ~9%,
+    whose history also mixes measurement bases). Entities already covered by a
+    refill signal are skipped to avoid saying the same thing twice.
+    """
     out = []
     for e in ENTITIES:
+        if e in skip_entities:
+            continue
         last = store.latest_storage(conn, e)
         if not last or last["fill"] is None:
             continue
@@ -46,12 +51,16 @@ def _fill_signals(conn):
         a = seasonal.assess(last["fill"], dist)
         if not seasonal.is_extreme(a):
             continue
-        b = a["band"]
+        pct, fill, b = a["percentile"], a["value"], a["band"]
+        low_side = pct is not None and pct <= 12
+        if not low_side and fill < 55:
+            continue  # suppress dubious "high" flags on near-empty storage
         out.append({
             "category": "storage_fill", "entity": e,
-            "severity": _sev(a["percentile"]), "score": abs(a["z"] or 0) + 1,
-            "headline": f"{_flag(e)} {_name(e)} storage {a['value']:.0f}% — {a['label']}",
-            "detail": (f"{a['percentile']:.0f}th percentile for this date "
+            "severity": ("red" if pct <= 5 else "amber") if low_side else "amber",
+            "score": (abs(a["z"] or 0) + 1) * (1.0 if low_side else 0.5),
+            "headline": f"{_flag(e)} {_name(e)} storage {fill:.0f}% — {a['label']}",
+            "detail": (f"{pct:.0f}th percentile for this date "
                        f"(5yr {b['min']:.0f}–{b['max']:.0f}%, avg {b['avg']:.0f}%)"
                        if b else a["label"]),
         })
@@ -112,9 +121,11 @@ def _price_signals(spreads):
 
 
 def build_signals(conn, run_date: str, analytics: dict) -> list[dict]:
+    refill = _trajectory_signals(analytics.get("trajectory"))
+    covered = {s["entity"] for s in refill}
     sigs = []
-    sigs += _fill_signals(conn)
-    sigs += _trajectory_signals(analytics.get("trajectory"))
+    sigs += refill
+    sigs += _fill_signals(conn, skip_entities=covered)
     sigs += _price_signals(analytics.get("spreads"))
     sev_rank = {"red": 0, "amber": 1}
     sigs.sort(key=lambda s: (sev_rank.get(s["severity"], 2), -s["score"]))
