@@ -86,7 +86,7 @@ def main() -> int:
 
     _step("Render")
     base = gas_dashboard.gen_html(D)
-    base = _try("retire intel tab", lambda: render.retire_intel_tab(base), default=base) or base
+    base = _try("integrate sitrep tab", lambda: render.integrate_sitrep_tab(base), default=base) or base
     sitrep = _try("sitrep render",
                   lambda: render.build_sitrep_html(a, ttf_series, hh_last, headlines, brief_text),
                   default="")

@@ -16,22 +16,33 @@ from html import escape
 from .config import COUNTRY_NAME, COUNTRY_FLAG
 
 
-def retire_intel_tab(base: str) -> str:
-    """Drop the legacy 'Intelligence' tab from the base dashboard.
+def integrate_sitrep_tab(base: str) -> str:
+    """Replace the legacy 'Intelligence' tab with the new 'Sitrep' tab and wire
+    its lazy chart init.
 
-    The new Sitrep hero replaces it entirely; leaving the old tab in place shows
-    duplicate (and winter-only / often n/a) alerts and metrics. We remove its tab
-    button, default the view to Storage Overview, and the old `tab-intel` content
-    div — being class `tc` (hidden unless active) — then never displays.
+    The old design injected the Sitrep as an always-visible block above the tab
+    contents, so clicking any tab swapped content *below* the Sitrep — confusing.
+    Instead we make Sitrep a first-class tab (`tab-sitrep`), shown by default,
+    and draw its TTF chart only when that tab is visible (the same lazy pattern
+    the working Seasonality/Map charts use — a canvas sized inside a hidden
+    container renders blank, which is why the chart looked empty).
     """
-    # 1. remove the Intelligence tab button (covers the emoji + label)
-    base = re.sub(r"<button class=\"tab active\" onclick=\"stab\('intel'\)\">.*?</button>",
-                  "", base, count=1)
-    # 2. promote Storage Overview to the default active tab (only one occurrence)
-    base = base.replace('<button class="tab" onclick="stab(\'overview\')">',
-                        '<button class="tab active" onclick="stab(\'overview\')">')
-    # 3. default the initial view to overview (remaining stab('intel') is the init call)
-    base = base.replace("stab('intel')", "stab('overview')")
+    # 1. swap the Intelligence tab button for a Sitrep button (keep it first/active)
+    base = re.sub(
+        r"<button class=\"tab active\" onclick=\"stab\('intel'\)\">.*?</button>",
+        "<button class=\"tab active\" onclick=\"stab('sitrep')\">🛰️ Sitrep</button>",
+        base, count=1)
+    # 2. register sitrep in the tab-name map so the button highlights correctly
+    base = base.replace("const tn={overview:'Overview'",
+                        "const tn={sitrep:'Sitrep',overview:'Overview'")
+    # 3. draw the TTF chart the first time the Sitrep tab is shown
+    base = base.replace(
+        "if(id==='season'&&!window._si)",
+        "if(id==='sitrep'&&!window._sti){window._sti=true;"
+        "setTimeout(function(){window.drawSitrepTTF&&window.drawSitrepTTF()},60)};"
+        "if(id==='season'&&!window._si)")
+    # 4. open on the Sitrep tab by default
+    base = base.replace("stab('intel')", "stab('sitrep')")
     return base
 
 
@@ -176,24 +187,21 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
 <div class="ss">Yahoo Finance front-month (€/MWh){(" · HH " + f"{hh_last:.2f} $/MMBtu") if hh_last else ""}</div>
 <div style="height:200px"><canvas id="sitrepTTF"></canvas></div></div>
 <script>
-(function(){{
-  function draw(){{
-    if(typeof Chart==='undefined'){{return setTimeout(draw,200);}}
-    var el=document.getElementById('sitrepTTF'); if(!el||el._done)return; el._done=1;
-    new Chart(el,{{type:'line',data:{{labels:{json.dumps(chart_labels)},
-      datasets:[{{label:'TTF',data:{json.dumps(chart_vals)},
-      borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',fill:true,borderWidth:2,
-      pointRadius:0,tension:.25}}]}},options:{{responsive:true,maintainAspectRatio:false,
-      plugins:{{legend:{{display:false}},tooltip:{{intersect:false,mode:'index'}}}},
-      scales:{{x:{{ticks:{{maxTicksLimit:6,autoSkip:true,
-      color:'#5e6e84',font:{{size:9}}}},grid:{{display:false}}}},y:{{ticks:{{color:'#5e6e84',
-      font:{{size:10}},callback:function(v){{return v+'€'}}}},grid:{{color:'#1a2332'}}}}}}}});
-  }}
-  if(document.readyState!=='loading')draw(); else document.addEventListener('DOMContentLoaded',draw);
-}})();
+window.drawSitrepTTF=function(){{
+  if(typeof Chart==='undefined'){{return setTimeout(window.drawSitrepTTF,200);}}
+  var el=document.getElementById('sitrepTTF'); if(!el||el._done)return; el._done=1;
+  new Chart(el,{{type:'line',data:{{labels:{json.dumps(chart_labels)},
+    datasets:[{{label:'TTF',data:{json.dumps(chart_vals)},
+    borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',fill:true,borderWidth:2,
+    pointRadius:0,tension:.25}}]}},options:{{responsive:true,maintainAspectRatio:false,
+    plugins:{{legend:{{display:false}},tooltip:{{intersect:false,mode:'index'}}}},
+    scales:{{x:{{ticks:{{maxTicksLimit:6,autoSkip:true,
+    color:'#5e6e84',font:{{size:9}}}},grid:{{display:false}}}},y:{{ticks:{{color:'#5e6e84',
+    font:{{size:10}},callback:function(v){{return v+'€'}}}},grid:{{color:'#1a2332'}}}}}}}});
+}};
 </script>'''
 
-    return f'''<div id="sitrep" style="margin-bottom:32px">
+    return f'''<div id="tab-sitrep" class="tc active" style="margin-bottom:8px">
 <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:14px;flex-wrap:wrap">
 <div style="font-size:11px;letter-spacing:4px;color:var(--ac);font-family:'IBM Plex Mono',monospace;font-weight:600">DAILY SITREP</div>
 <div style="font-size:11px;color:var(--t3);font-family:'IBM Plex Mono',monospace">{run}</div>
