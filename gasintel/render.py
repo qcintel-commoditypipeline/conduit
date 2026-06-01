@@ -35,13 +35,7 @@ def integrate_sitrep_tab(base: str) -> str:
     # 2. register sitrep in the tab-name map so the button highlights correctly
     base = base.replace("const tn={overview:'Overview'",
                         "const tn={sitrep:'Sitrep',overview:'Overview'")
-    # 3. draw the TTF chart the first time the Sitrep tab is shown
-    base = base.replace(
-        "if(id==='season'&&!window._si)",
-        "if(id==='sitrep'&&!window._sti){window._sti=true;"
-        "setTimeout(function(){window.drawSitrepTTF&&window.drawSitrepTTF()},60)};"
-        "if(id==='season'&&!window._si)")
-    # 4. open on the Sitrep tab by default
+    # 3. open on the Sitrep tab by default (chart is server-side SVG, no JS init)
     base = base.replace("stab('intel')", "stab('sitrep')")
     return base
 
@@ -100,6 +94,61 @@ def _refill_rows(traj):
                  f'<td class="cr">{t["projected_fill"]:.0f}%</td>'
                  f'<td class="cr">{_status_cell(t)}</td></tr>')
     return rows
+
+
+def _svg_price_chart(labels: list, vals: list, w: int = 640, h: int = 200) -> str:
+    """Server-side inline SVG line chart — no JS, no canvas, no CDN.
+
+    Robust by construction: it's just markup, so it renders wherever HTML does.
+    Uses a viewBox so it scales fluidly to the container width on mobile.
+    """
+    pts = [(l, v) for l, v in zip(labels, vals) if v is not None]
+    if len(pts) < 2:
+        return ('<div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;'
+                'font-size:11px;padding:20px 0">price history unavailable</div>')
+    vs = [v for _, v in pts]
+    lo, hi = min(vs), max(vs)
+    span = (hi - lo) or 1.0
+    pad_l, pad_r, pad_t, pad_b = 8, 44, 12, 22
+    iw, ih = w - pad_l - pad_r, h - pad_t - pad_b
+    n = len(pts)
+
+    def x(i): return pad_l + iw * i / (n - 1)
+    def y(v): return pad_t + ih * (1 - (v - lo) / span)
+
+    line = " ".join(f"{x(i):.1f},{y(v):.1f}" for i, (_, v) in enumerate(pts))
+    area = f"{x(0):.1f},{y(lo):.1f} " + line + f" {x(n-1):.1f},{y(lo):.1f}"
+
+    # y-axis gridlines + labels (4 levels)
+    grid = ""
+    for k in range(4):
+        gv = lo + span * k / 3
+        gy = y(gv)
+        grid += (f'<line x1="{pad_l}" y1="{gy:.1f}" x2="{pad_l+iw}" y2="{gy:.1f}" '
+                 f'stroke="#1a2332" stroke-width="1"/>'
+                 f'<text x="{pad_l+iw+6}" y="{gy+3:.1f}" fill="#5e6e84" '
+                 f'font-family="IBM Plex Mono,monospace" font-size="9">{gv:.0f}€</text>')
+
+    # x-axis month labels (~5 evenly spaced)
+    xlab = ""
+    step = max(1, n // 5)
+    for i in range(0, n, step):
+        d = pts[i][0]
+        lbl = d[5:7] + "/" + d[8:10]  # MM/DD
+        xlab += (f'<text x="{x(i):.1f}" y="{h-6}" fill="#5e6e84" '
+                 f'font-family="IBM Plex Mono,monospace" font-size="9" '
+                 f'text-anchor="middle">{lbl}</text>')
+
+    last_x, last_y = x(n - 1), y(pts[-1][1])
+    return (
+        f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}" '
+        f'preserveAspectRatio="none" style="display:block">'
+        f'{grid}'
+        f'<polygon points="{area}" fill="rgba(96,165,250,.10)"/>'
+        f'<polyline points="{line}" fill="none" stroke="#60a5fa" '
+        f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+        f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="3" fill="#60a5fa"/>'
+        f'</svg>')
 
 
 def _balance_html(bal):
@@ -183,47 +232,11 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
 <div class="mc-sub">below 90% projection</div></div>
 </div>''' if eu_fill is not None else ""
 
+    # Server-side inline SVG — no Chart.js/canvas/JS, so it always renders.
+    price_svg = _svg_price_chart(chart_labels, chart_vals)
     price_panel = f'''<div class="pnl"><div class="st">TTF Price — 120 days</div>
 <div class="ss">Yahoo Finance front-month (€/MWh){(" · HH " + f"{hh_last:.2f} $/MMBtu") if hh_last else ""}</div>
-<div style="position:relative;height:220px;width:100%"><canvas id="sitrepTTF"></canvas></div>
-<div id="sitrepTTFmsg" style="color:var(--t3);font-family:'IBM Plex Mono',monospace;font-size:10px;padding:6px 0"></div></div>
-<script>
-window._ttfLabels={json.dumps(chart_labels)};
-window._ttfVals={json.dumps(chart_vals)};
-(function(){{
-  var tries=0;
-  function note(t){{var m=document.getElementById('sitrepTTFmsg');if(m)m.textContent=t;}}
-  function attempt(){{
-    tries++;
-    var el=document.getElementById('sitrepTTF');
-    var hasChart=(typeof Chart!=='undefined');
-    var w=el?el.clientWidth:-1;
-    var n=(window._ttfVals||[]).length;
-    note('dbg: chart='+hasChart+' w='+w+' pts='+n+' try='+tries);
-    if(!el){{ if(tries<60) return setTimeout(attempt,150); return; }}
-    if(!hasChart){{ if(tries<60) return setTimeout(attempt,150); note('FAIL: Chart.js never loaded'); return; }}
-    if(w<10){{ if(tries<60) return setTimeout(attempt,150); note('FAIL: canvas width=0 after wait'); return; }}
-    if(!n){{ note('FAIL: no price data'); return; }}
-    if(el._done) return;
-    el._done=1;
-    try{{
-      new Chart(el,{{type:'line',data:{{labels:window._ttfLabels,
-        datasets:[{{label:'TTF',data:window._ttfVals,
-        borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',fill:true,borderWidth:2,
-        pointRadius:0,tension:.25}}]}},options:{{responsive:true,maintainAspectRatio:false,
-        animation:false,plugins:{{legend:{{display:false}},tooltip:{{intersect:false,mode:'index'}}}},
-        scales:{{x:{{ticks:{{maxTicksLimit:6,autoSkip:true,
-        color:'#5e6e84',font:{{size:9}}}},grid:{{display:false}}}},y:{{ticks:{{color:'#5e6e84',
-        font:{{size:10}},callback:function(v){{return v+'€'}}}},grid:{{color:'#1a2332'}}}}}}}});
-      note('');
-    }}catch(e){{el._done=0;note('FAIL: '+(e&&e.message?e.message:e));}}
-  }}
-  // self-start (sitrep tab is active by default) + re-arm on tab show
-  window.drawSitrepTTF=function(){{tries=0;attempt();}};
-  if(document.readyState!=='loading') setTimeout(attempt,80);
-  else document.addEventListener('DOMContentLoaded',function(){{setTimeout(attempt,80);}});
-}})();
-</script>'''
+<div style="width:100%;overflow:hidden">{price_svg}</div></div>'''
 
     return f'''<div id="tab-sitrep" class="tc active" style="margin-bottom:8px">
 <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:14px;flex-wrap:wrap">
