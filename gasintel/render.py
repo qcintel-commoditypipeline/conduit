@@ -186,39 +186,43 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
     price_panel = f'''<div class="pnl"><div class="st">TTF Price — 120 days</div>
 <div class="ss">Yahoo Finance front-month (€/MWh){(" · HH " + f"{hh_last:.2f} $/MMBtu") if hh_last else ""}</div>
 <div style="position:relative;height:220px;width:100%"><canvas id="sitrepTTF"></canvas></div>
-<div id="sitrepTTFmsg" style="display:none;color:var(--rd);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:8px 0"></div></div>
+<div id="sitrepTTFmsg" style="color:var(--t3);font-family:'IBM Plex Mono',monospace;font-size:10px;padding:6px 0"></div></div>
 <script>
 window._ttfLabels={json.dumps(chart_labels)};
 window._ttfVals={json.dumps(chart_vals)};
-window.drawSitrepTTF=function(tries){{
-  tries=tries||0;
-  var el=document.getElementById('sitrepTTF');
-  var msg=document.getElementById('sitrepTTFmsg');
-  function fail(t){{if(msg){{msg.style.display='block';msg.textContent=t;}}}}
-  try{{
-    if(typeof Chart==='undefined'){{
-      if(tries>50)return fail('chart library did not load');
-      return setTimeout(function(){{window.drawSitrepTTF(tries+1)}},150);
-    }}
-    if(!el)return fail('canvas not found');
-    if(el._done)return;
-    // wait until the canvas has a real width (tab fully laid out)
-    if(el.clientWidth<10){{
-      if(tries>50)return fail('canvas has no width');
-      return setTimeout(function(){{window.drawSitrepTTF(tries+1)}},150);
-    }}
-    if(!window._ttfVals||!window._ttfVals.length)return fail('no price data');
+(function(){{
+  var tries=0;
+  function note(t){{var m=document.getElementById('sitrepTTFmsg');if(m)m.textContent=t;}}
+  function attempt(){{
+    tries++;
+    var el=document.getElementById('sitrepTTF');
+    var hasChart=(typeof Chart!=='undefined');
+    var w=el?el.clientWidth:-1;
+    var n=(window._ttfVals||[]).length;
+    note('dbg: chart='+hasChart+' w='+w+' pts='+n+' try='+tries);
+    if(!el){{ if(tries<60) return setTimeout(attempt,150); return; }}
+    if(!hasChart){{ if(tries<60) return setTimeout(attempt,150); note('FAIL: Chart.js never loaded'); return; }}
+    if(w<10){{ if(tries<60) return setTimeout(attempt,150); note('FAIL: canvas width=0 after wait'); return; }}
+    if(!n){{ note('FAIL: no price data'); return; }}
+    if(el._done) return;
     el._done=1;
-    new Chart(el,{{type:'line',data:{{labels:window._ttfLabels,
-      datasets:[{{label:'TTF',data:window._ttfVals,
-      borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',fill:true,borderWidth:2,
-      pointRadius:0,tension:.25}}]}},options:{{responsive:true,maintainAspectRatio:false,
-      animation:false,plugins:{{legend:{{display:false}},tooltip:{{intersect:false,mode:'index'}}}},
-      scales:{{x:{{ticks:{{maxTicksLimit:6,autoSkip:true,
-      color:'#5e6e84',font:{{size:9}}}},grid:{{display:false}}}},y:{{ticks:{{color:'#5e6e84',
-      font:{{size:10}},callback:function(v){{return v+'€'}}}},grid:{{color:'#1a2332'}}}}}}}});
-  }}catch(e){{el&&(el._done=0);fail('chart error: '+(e&&e.message?e.message:e));}}
-}};
+    try{{
+      new Chart(el,{{type:'line',data:{{labels:window._ttfLabels,
+        datasets:[{{label:'TTF',data:window._ttfVals,
+        borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',fill:true,borderWidth:2,
+        pointRadius:0,tension:.25}}]}},options:{{responsive:true,maintainAspectRatio:false,
+        animation:false,plugins:{{legend:{{display:false}},tooltip:{{intersect:false,mode:'index'}}}},
+        scales:{{x:{{ticks:{{maxTicksLimit:6,autoSkip:true,
+        color:'#5e6e84',font:{{size:9}}}},grid:{{display:false}}}},y:{{ticks:{{color:'#5e6e84',
+        font:{{size:10}},callback:function(v){{return v+'€'}}}},grid:{{color:'#1a2332'}}}}}}}});
+      note('');
+    }}catch(e){{el._done=0;note('FAIL: '+(e&&e.message?e.message:e));}}
+  }}
+  // self-start (sitrep tab is active by default) + re-arm on tab show
+  window.drawSitrepTTF=function(){{tries=0;attempt();}};
+  if(document.readyState!=='loading') setTimeout(attempt,80);
+  else document.addEventListener('DOMContentLoaded',function(){{setTimeout(attempt,80);}});
+}})();
 </script>'''
 
     return f'''<div id="tab-sitrep" class="tc active" style="margin-bottom:8px">
