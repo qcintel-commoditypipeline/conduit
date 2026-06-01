@@ -185,19 +185,39 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
 
     price_panel = f'''<div class="pnl"><div class="st">TTF Price — 120 days</div>
 <div class="ss">Yahoo Finance front-month (€/MWh){(" · HH " + f"{hh_last:.2f} $/MMBtu") if hh_last else ""}</div>
-<div style="height:200px"><canvas id="sitrepTTF"></canvas></div></div>
+<div style="position:relative;height:220px;width:100%"><canvas id="sitrepTTF"></canvas></div>
+<div id="sitrepTTFmsg" style="display:none;color:var(--rd);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:8px 0"></div></div>
 <script>
-window.drawSitrepTTF=function(){{
-  if(typeof Chart==='undefined'){{return setTimeout(window.drawSitrepTTF,200);}}
-  var el=document.getElementById('sitrepTTF'); if(!el||el._done)return; el._done=1;
-  new Chart(el,{{type:'line',data:{{labels:{json.dumps(chart_labels)},
-    datasets:[{{label:'TTF',data:{json.dumps(chart_vals)},
-    borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',fill:true,borderWidth:2,
-    pointRadius:0,tension:.25}}]}},options:{{responsive:true,maintainAspectRatio:false,
-    plugins:{{legend:{{display:false}},tooltip:{{intersect:false,mode:'index'}}}},
-    scales:{{x:{{ticks:{{maxTicksLimit:6,autoSkip:true,
-    color:'#5e6e84',font:{{size:9}}}},grid:{{display:false}}}},y:{{ticks:{{color:'#5e6e84',
-    font:{{size:10}},callback:function(v){{return v+'€'}}}},grid:{{color:'#1a2332'}}}}}}}});
+window._ttfLabels={json.dumps(chart_labels)};
+window._ttfVals={json.dumps(chart_vals)};
+window.drawSitrepTTF=function(tries){{
+  tries=tries||0;
+  var el=document.getElementById('sitrepTTF');
+  var msg=document.getElementById('sitrepTTFmsg');
+  function fail(t){{if(msg){{msg.style.display='block';msg.textContent=t;}}}}
+  try{{
+    if(typeof Chart==='undefined'){{
+      if(tries>50)return fail('chart library did not load');
+      return setTimeout(function(){{window.drawSitrepTTF(tries+1)}},150);
+    }}
+    if(!el)return fail('canvas not found');
+    if(el._done)return;
+    // wait until the canvas has a real width (tab fully laid out)
+    if(el.clientWidth<10){{
+      if(tries>50)return fail('canvas has no width');
+      return setTimeout(function(){{window.drawSitrepTTF(tries+1)}},150);
+    }}
+    if(!window._ttfVals||!window._ttfVals.length)return fail('no price data');
+    el._done=1;
+    new Chart(el,{{type:'line',data:{{labels:window._ttfLabels,
+      datasets:[{{label:'TTF',data:window._ttfVals,
+      borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',fill:true,borderWidth:2,
+      pointRadius:0,tension:.25}}]}},options:{{responsive:true,maintainAspectRatio:false,
+      animation:false,plugins:{{legend:{{display:false}},tooltip:{{intersect:false,mode:'index'}}}},
+      scales:{{x:{{ticks:{{maxTicksLimit:6,autoSkip:true,
+      color:'#5e6e84',font:{{size:9}}}},grid:{{display:false}}}},y:{{ticks:{{color:'#5e6e84',
+      font:{{size:10}},callback:function(v){{return v+'€'}}}},grid:{{color:'#1a2332'}}}}}}}});
+  }}catch(e){{el&&(el._done=0);fail('chart error: '+(e&&e.message?e.message:e));}}
 }};
 </script>'''
 
