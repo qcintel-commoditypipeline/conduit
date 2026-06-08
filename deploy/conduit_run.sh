@@ -10,6 +10,9 @@ PYTHON=/opt/scripts/venv/bin/python3
 cd "$SCRIPT_DIR" || exit 1
 # Load .env so failure-alert vars are available to this shell too.
 set -a; [ -f /opt/scripts/.env ] && . /opt/scripts/.env; set +a
+# Gas sitrep has no relevance in the shared FLARE telegram channel — suppress the
+# brief push (the cron-failure alert below is separate and still fires).
+export CONDUIT_NO_PUSH=1
 
 echo "[$(date -u +'%Y-%m-%d %H:%M:%S')] UTC CONDUIT run triggered" >> "$LOG"
 "$PYTHON" "$SCRIPT_DIR/pipeline.py" >> "$LOG" 2>&1
