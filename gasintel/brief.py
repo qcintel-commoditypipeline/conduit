@@ -115,7 +115,7 @@ def deliver_powerautomate(text: str, run_date: str = "") -> bool:
             "date": run_date,
             "title": "CONDUIT — daily gas market comm",
             "text": text,
-        }, timeout=20)
+        }, timeout=45)  # PA flow cold-starts can take >20s; VPS connect adds ~5s
         ok = r.status_code in (200, 202)
         print(f"  {'✓' if ok else '⚠'} brief -> Power Automate ({r.status_code})")
         return ok
