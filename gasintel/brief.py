@@ -102,10 +102,10 @@ def deliver_telegram(text: str) -> bool:
 def deliver_powerautomate(text: str, run_date: str = "") -> bool:
     """POST the brief to the Conduit Power Automate flow (Teams routing). The URL
     is a capability token in CONDUIT_POWERAUTOMATE_URL — keep it in the env, never
-    commit it. Power Automate's HTTP trigger returns 202 Accepted on success."""
-    if os.getenv("CONDUIT_NO_PUSH"):
-        print("  · brief delivery suppressed (CONDUIT_NO_PUSH)")
-        return False
+    commit it. Power Automate's HTTP trigger returns 202 Accepted on success.
+
+    Note: deliberately NOT gated by CONDUIT_NO_PUSH — that flag mutes the legacy
+    Telegram path (still set in conduit_run.sh); Power Automate is the live channel."""
     url = os.getenv("CONDUIT_POWERAUTOMATE_URL")
     if not (url and text):
         return False
