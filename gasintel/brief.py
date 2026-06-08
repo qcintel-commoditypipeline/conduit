@@ -97,3 +97,28 @@ def deliver_telegram(text: str) -> bool:
     except Exception as e:  # noqa: BLE001
         print(f"  ⚠ Telegram delivery failed: {e}")
         return False
+
+
+def deliver_powerautomate(text: str, run_date: str = "") -> bool:
+    """POST the brief to the Conduit Power Automate flow (Teams routing). The URL
+    is a capability token in CONDUIT_POWERAUTOMATE_URL — keep it in the env, never
+    commit it. Power Automate's HTTP trigger returns 202 Accepted on success."""
+    if os.getenv("CONDUIT_NO_PUSH"):
+        print("  · brief delivery suppressed (CONDUIT_NO_PUSH)")
+        return False
+    url = os.getenv("CONDUIT_POWERAUTOMATE_URL")
+    if not (url and text):
+        return False
+    try:
+        r = requests.post(url, json={
+            "app": "conduit",
+            "date": run_date,
+            "title": "CONDUIT — daily gas market comm",
+            "text": text,
+        }, timeout=20)
+        ok = r.status_code in (200, 202)
+        print(f"  {'✓' if ok else '⚠'} brief -> Power Automate ({r.status_code})")
+        return ok
+    except Exception as e:  # noqa: BLE001
+        print(f"  ⚠ Power Automate delivery failed: {e}")
+        return False

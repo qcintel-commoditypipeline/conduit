@@ -82,7 +82,7 @@ def main() -> int:
     headlines = _try("news", news.fetch_headlines, default=[]) or []
     brief_text = _try("brief", lambda: brief.generate(a, headlines))
     if brief_text:
-        _try("brief delivery", lambda: brief.deliver_telegram(brief_text))
+        _try("brief -> power automate", lambda: brief.deliver_powerautomate(brief_text, run_date))
 
     _step("Render")
     base = gas_dashboard.gen_html(D)
