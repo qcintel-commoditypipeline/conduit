@@ -99,6 +99,35 @@ def deliver_telegram(text: str) -> bool:
         return False
 
 
+def _teams_card(title: str, date: str, text: str) -> dict:
+    """Wrap the brief in the Teams 'message' envelope the Power Automate
+    'webhook request received -> post card' flow expects: it reads the adaptive
+    card from attachments[0].content, so the payload itself must be a valid
+    AdaptiveCard (top-level type == 'AdaptiveCard'). Each text line becomes its
+    own TextBlock so bullets/paragraphs render. No emoji — clean text only."""
+    body = [{"type": "TextBlock", "text": title, "weight": "Bolder",
+             "size": "Medium", "wrap": True}]
+    if date:
+        body.append({"type": "TextBlock", "text": date, "isSubtle": True,
+                     "spacing": "None", "wrap": True})
+    for line in (text or "").split("\n"):
+        if line.strip():
+            body.append({"type": "TextBlock", "text": line.rstrip(),
+                         "wrap": True, "spacing": "Small"})
+    return {
+        "type": "message",
+        "attachments": [{
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": {
+                "type": "AdaptiveCard",
+                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                "version": "1.4",
+                "body": body,
+            },
+        }],
+    }
+
+
 def deliver_powerautomate(text: str, run_date: str = "") -> bool:
     """POST the brief to the Conduit Power Automate flow (Teams routing). The URL
     is a capability token in CONDUIT_POWERAUTOMATE_URL — keep it in the env, never
@@ -110,12 +139,10 @@ def deliver_powerautomate(text: str, run_date: str = "") -> bool:
     if not (url and text):
         return False
     try:
-        r = requests.post(url, json={
-            "app": "conduit",
-            "date": run_date,
-            "title": "CONDUIT — daily gas market comm",
-            "text": text,
-        }, timeout=45)  # PA flow cold-starts can take >20s; VPS connect adds ~5s
+        r = requests.post(
+            url,
+            json=_teams_card("CONDUIT — daily gas market comm", run_date, text),
+            timeout=45)  # PA flow cold-starts can take >20s; VPS connect adds ~5s
         ok = r.status_code in (200, 202)
         print(f"  {'✓' if ok else '⚠'} brief -> Power Automate ({r.status_code})")
         return ok
