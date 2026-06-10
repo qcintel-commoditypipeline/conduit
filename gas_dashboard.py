@@ -47,32 +47,12 @@ OUTPUT_FILE = "gas_dashboard.html"
 CACHE_FILE = "gas_cache.json"
 NATGAS_CATALOGUE_CACHE = "natgas_catalogue.json"
 
-# Full country list with correct names
+# Full country list with correct names — single source of truth lives in
+# gasintel.config (de-duplicated; the two copies had started to diverge).
 # Note: Ireland (IE) has no underground gas storage and is not on AGSI.
 #       Serbia (RS) does not report to GIE AGSI.
 #       GB returns dashes at country-level — handled via facility-level aggregation.
-COUNTRIES = [
-    ("at", "AT", "Austria",       "🇦🇹"),
-    ("be", "BE", "Belgium",       "🇧🇪"),
-    ("bg", "BG", "Bulgaria",      "🇧🇬"),
-    ("hr", "HR", "Croatia",       "🇭🇷"),
-    ("cz", "CZ", "Czechia",       "🇨🇿"),
-    ("dk", "DK", "Denmark",       "🇩🇰"),
-    ("fr", "FR", "France",        "🇫🇷"),
-    ("de", "DE", "Germany",       "🇩🇪"),
-    ("hu", "HU", "Hungary",       "🇭🇺"),
-    ("it", "IT", "Italy",         "🇮🇹"),
-    ("lv", "LV", "Latvia",        "🇱🇻"),
-    ("nl", "NL", "Netherlands",   "🇳🇱"),
-    ("pl", "PL", "Poland",        "🇵🇱"),
-    ("pt", "PT", "Portugal",      "🇵🇹"),
-    ("ro", "RO", "Romania",       "🇷🇴"),
-    ("sk", "SK", "Slovakia",      "🇸🇰"),
-    ("es", "ES", "Spain",         "🇪🇸"),
-    ("se", "SE", "Sweden",        "🇸🇪"),
-    ("gb", "GB", "United Kingdom","🇬🇧"),
-    ("ua", "UA", "Ukraine",       "🇺🇦"),
-]
+from gasintel.config import COUNTRIES, CORRIDORS as _CORRIDOR_META
 
 LNG_CC = ["be", "es", "fr", "de", "gr", "it", "lt", "nl", "pl", "pt", "gb", "hr", "fi"]
 
@@ -970,60 +950,52 @@ def fetch_all():
     else:
         print("  ✗ Failed")
 
+    # Group records per (point, direction) and per gas-day. The old code keyed
+    # by point only (mixing entry+exit values into one bucket) and took v[0] as
+    # "latest" — ENTSOG does not return records date-ordered, so that was an
+    # arbitrary day in the window. Multiple operators can report the same
+    # point/day; we average them per day to keep one comparable daily value.
     pts = {}
     for f in raw:
         k = f.get("pointLabel", f.get("pointKey", ""))
-        if not k:
+        day = (f.get("periodFrom") or "")[:10]
+        if not k or not day:
             continue
         try:
             v = float(f["value"])
         except:
             continue
-        if k not in pts:
-            pts[k] = {"l": f.get("pointLabel", k), "o": f.get("operatorLabel", ""),
-                       "d": f.get("directionKey", ""), "u": f.get("unit", "kWh/d"), "v": []}
-        pts[k]["v"].append(v)
+        dirn = f.get("directionKey", "")
+        pk = (k, dirn)
+        if pk not in pts:
+            pts[pk] = {"l": f.get("pointLabel", k), "o": f.get("operatorLabel", ""),
+                       "d": dirn, "u": f.get("unit", "kWh/d"), "days": {}}
+        pts[pk]["days"].setdefault(day, []).append(v)
 
-    CORRIDORS = {
-        "Dornum": "Norwegian (North Sea)", "NETRA": "Norwegian (North Sea)",
-        "Emden": "Norwegian (North Sea)", "Easington": "Norwegian (Langeled)",
-        "St. Fergus": "Norwegian (FLAGS/Vesterled)",
-        "Milford Haven": "LNG Regasification (UK)",
-        "Mazara del Vallo": "North African (Transmed/Algeria)",
-        "Tarvisio": "Central European (TAG pipeline)",
-        "Waidhaus": "Central European (ex-CZ corridor)",
-        "Mallnow": "Eastern (Yamal pipeline)",
-        "Zeebrugge": "LNG / UK Interconnector",
-        "Dunkerque": "LNG Regasification (FR)", "Montoir": "LNG Regasification (FR)",
-        "Fos": "LNG Regasification (FR)", "Gate Terminal": "LNG Regasification (NL)",
-        "Bunde": "NW European Interconnector", "Oude": "NW European Interconnector",
-        "TVB": "Spanish Virtual Balancing",
-        "Obergailbach": "Franco-German Interconnector",
-        "Strandzha": "Turkish/South Stream corridor",
-        "VIP THE-ZTP": "German Virtual Trading Point",
-        "Power Stations": "UK Demand (Power Gen)",
-        "Distribution": "Domestic Demand",
-        "Thermal Plants": "Demand (Power Gen)",
-        "GRTgaz aggregated": "French Demand (Distribution)",
-    }
+    # Display labels come from the shared corridor map in gasintel.config —
+    # the stale local copy (which still said "South Stream") is gone.
+    CORRIDORS = {kw: meta[0] for kw, meta in _CORRIDOR_META.items()}
 
     fl = []
     for p in pts.values():
-        if p["v"]:
-            latest = p["v"][0]
-            avg = sum(p["v"]) / len(p["v"])
-            unit_out = p["u"]
-            if "kWh/d" in p["u"]:
-                latest = latest / 1e6
-                avg = avg / 1e6
-                unit_out = "GWh/d"
-            corridor = ""
-            for keyword, label in CORRIDORS.items():
-                if keyword.lower() in p["l"].lower():
-                    corridor = label
-                    break
-            fl.append({"label": p["l"], "operator": p["o"], "direction": p["d"],
-                        "unit": unit_out, "latest": latest, "avg": avg, "corridor": corridor})
+        if not p["days"]:
+            continue
+        daily = sorted((day, sum(vs) / len(vs)) for day, vs in p["days"].items())
+        latest = daily[-1][1]                                # true latest gas-day
+        avg = sum(v for _, v in daily) / len(daily)          # mean of daily values
+        unit_out = p["u"]
+        if "kWh/d" in p["u"]:
+            latest = latest / 1e6
+            avg = avg / 1e6
+            unit_out = "GWh/d"
+        corridor = ""
+        for keyword, label in CORRIDORS.items():
+            if keyword.lower() in p["l"].lower():
+                corridor = label
+                break
+        fl.append({"label": p["l"], "operator": p["o"], "direction": p["d"],
+                    "unit": unit_out, "latest": latest, "avg": avg,
+                    "corridor": corridor, "latest_day": daily[-1][0]})
     D["flows"] = sorted(fl, key=lambda x: x["latest"], reverse=True)[:40]
     print(f"  ✓ {len(D['flows'])} points")
 

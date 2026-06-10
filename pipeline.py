@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 import time
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # UTF-8 console (the old script crashed on Windows cp1252; harmless on Linux)
@@ -52,7 +52,7 @@ def _try(label, fn, default=None):
 
 def main() -> int:
     t0 = time.time()
-    run_date = datetime.utcnow().strftime("%Y-%m-%d")
+    run_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     print("=" * 60)
     print("  Conduit pipeline —", run_date, "UTC")
     print("=" * 60)
@@ -66,7 +66,7 @@ def main() -> int:
     with store.session() as conn:
         print("  snapshot:", _try("persist", lambda: persist.persist_snapshot(conn, D, run_date)))
         _try("price refresh", lambda: print("  prices:", store.upsert_prices(conn, sources.fetch_prices(rng="1mo"))))
-        f7 = (datetime.utcnow() - timedelta(days=8)).strftime("%Y-%m-%d")
+        f7 = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
         _try("flow refresh", lambda: print("  flows:", store.upsert_flows(conn, sources.fetch_flows(f7, run_date))))
 
         _step("Analytics")

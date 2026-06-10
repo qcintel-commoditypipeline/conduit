@@ -84,6 +84,11 @@ CORRIDORS = {
     "Swinoujscie": ("LNG (PL)", "LNG", True),
     "Revithoussa": ("LNG (GR)", "LNG", True),
     "Klaipeda": ("LNG (LT)", "LNG", True),
+    # Intra-EU interconnectors — classified so the Flows tab can group them,
+    # but NOT external supply (they shuffle gas already inside the system)
+    "Bunde": ("NW European Interconnector", "intra-EU", False),
+    "Oude": ("NW European Interconnector", "intra-EU", False),
+    "Obergailbach": ("Franco-German Interconnector", "intra-EU", False),
     # Domestic demand / virtual points — NOT cross-border supply
     "Distribution": ("Domestic Demand", "demand", False),
     "Power Stations": ("Power-gen Demand", "demand", False),

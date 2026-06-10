@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from html import escape
 
 from .config import COUNTRY_NAME, COUNTRY_FLAG
@@ -201,7 +201,7 @@ def build_sitrep_html(analytics: dict, ttf_series: list, hh_last=None,
     signals = analytics.get("signals", [])
     eu = traj.get("EU", {})
     ttf = spreads.get("ttf") or {}
-    run = analytics.get("run_date", datetime.utcnow().strftime("%Y-%m-%d"))
+    run = analytics.get("run_date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
     behind = sum(1 for e, t in traj.items() if e != "EU"
                  and not t.get("on_track") and t.get("shortfall_pp", 0) >= 2)

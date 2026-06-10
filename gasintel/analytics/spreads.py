@@ -6,6 +6,8 @@ TTF-JKM) needs a curve source (e.g. Barchart) — left as a clean extension poin
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from .. import store
 from . import seasonal
 
@@ -19,11 +21,18 @@ def _changes(series):
     last = series[-1]["price"]
     prev = series[-2]["price"]
     d30 = series[-22]["price"] if len(series) >= 22 else series[0]["price"]
+    # w/w: latest close on or before exactly 7 calendar days ago (calendar-
+    # aware, so weekends/holidays don't skew the comparison).
+    week_target = (datetime.strptime(series[-1]["trade_day"], "%Y-%m-%d")
+                   - timedelta(days=7)).strftime("%Y-%m-%d")
+    d7 = next((r["price"] for r in reversed(series)
+               if r["trade_day"] <= week_target), None)
     pct = lambda a, b: round((a - b) / b * 100, 1) if b else None
     return {
         "last": round(last, 2),
         "chg_1d_pct": pct(last, prev),
         "chg_1d_abs": round(last - prev, 2),
+        "chg_1w_pct": pct(last, d7) if d7 is not None else None,
         "chg_30d_pct": pct(last, d30),
         "year_percentile": seasonal.percentile_of(
             last, [r["price"] for r in series[-260:]]),

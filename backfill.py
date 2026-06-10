@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from gasintel import store, sources
@@ -53,7 +53,7 @@ def _date_chunks(years: int, chunk_days: int = 7):
     back empty, while ~8-day windows return thousands of records reliably, even
     years back. So we chunk by a week.
     """
-    end = datetime.utcnow().date()
+    end = datetime.now(timezone.utc).date()
     start = end - timedelta(days=int(years * 365.25))
     cur = start
     while cur <= end:
