@@ -12,7 +12,12 @@ import os
 
 import requests
 
-MODEL = os.getenv("CONDUIT_BRIEF_MODEL", "claude-sonnet-4-5")
+# claude-sonnet-4-5 retires 2026-11-30; claude-sonnet-5-5 is the replacement.
+MODEL = os.getenv("CONDUIT_BRIEF_MODEL", "claude-sonnet-5-5")
+# Sonnet 5.5 thinks adaptively by default and thinking counts toward
+# max_tokens, so keep the ~600-token sitrep budget plus thinking headroom.
+MAX_TOKENS = 4000
+EFFORT = "low"
 SYSTEM = (
     "You are a senior European natural-gas analyst writing the morning sitrep "
     "for a trading/pricing desk. You are given a block of pre-computed facts; "
@@ -124,10 +129,16 @@ def generate(analytics: dict, news: list) -> str | None:
         import anthropic
         client = anthropic.Anthropic(api_key=key)
         msg = client.messages.create(
-            model=MODEL, max_tokens=600, system=SYSTEM,
+            model=MODEL, max_tokens=MAX_TOKENS, system=SYSTEM,
             messages=[{"role": "user", "content":
                        f"Today's data:\n{facts}\n\nWrite the sitrep bullets."}],
+            # Sent raw so the pinned SDK (anthropic==0.40.0) needs no upgrade.
+            extra_headers={"anthropic-beta": "server-side-fallback-2026-07-01"},
+            extra_body={"output_config": {"effort": EFFORT}, "fallbacks": "default"},
         )
+        if getattr(msg, "stop_reason", None) == "refusal":
+            print("  ⚠ brief: model declined (refusal) — skipping narrative")
+            return None
         text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text").strip()
         print(f"  ✓ brief: {len(text)} chars ({MODEL})")
         return text

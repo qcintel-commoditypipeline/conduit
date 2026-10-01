@@ -106,5 +106,67 @@ class FactsTests(unittest.TestCase):
         self.assertIn("Norway maintenance extended", text)
 
 
+class _Block:
+    def __init__(self, type_, text=""):
+        self.type, self.text = type_, text
+
+
+class _Msg:
+    def __init__(self, content, stop_reason="end_turn"):
+        self.content, self.stop_reason = content, stop_reason
+
+
+class _FakeClient:
+    calls = []
+    response = None
+
+    def __init__(self, api_key=None):
+        self.messages = self
+
+    def create(self, **kwargs):
+        _FakeClient.calls.append(kwargs)
+        return _FakeClient.response
+
+
+class GenerateRequestShapeTests(unittest.TestCase):
+    """No network: a fake anthropic module records the request."""
+
+    def _run(self, response):
+        import os
+        import sys
+        import types
+        _FakeClient.calls, _FakeClient.response = [], response
+        fake = types.SimpleNamespace(Anthropic=_FakeClient)
+        old_mod, old_key = sys.modules.get("anthropic"), os.environ.get("ANTHROPIC_API_KEY")
+        sys.modules["anthropic"] = fake
+        os.environ["ANTHROPIC_API_KEY"] = "test-key"
+        try:
+            return brief.generate(_analytics(), [])
+        finally:
+            if old_mod is None:
+                sys.modules.pop("anthropic", None)
+            else:
+                sys.modules["anthropic"] = old_mod
+            if old_key is None:
+                os.environ.pop("ANTHROPIC_API_KEY", None)
+            else:
+                os.environ["ANTHROPIC_API_KEY"] = old_key
+
+    def test_default_model_is_not_retiring_sonnet_4_5(self):
+        self.assertNotIn("sonnet-4-5", brief.MODEL)
+
+    def test_current_model_request_shape_and_text_after_thinking(self):
+        text = self._run(_Msg([_Block("thinking"), _Block("text", "- EU storage lags")]))
+        self.assertEqual(text, "- EU storage lags")
+        call = _FakeClient.calls[0]
+        self.assertNotIn("temperature", call)
+        self.assertNotIn("thinking", call)  # adaptive default; 'disabled' 400s on 5.5
+        self.assertGreater(call["max_tokens"], 600)
+        self.assertEqual(call["extra_body"]["output_config"], {"effort": "low"})
+
+    def test_refusal_returns_none(self):
+        self.assertIsNone(self._run(_Msg([], stop_reason="refusal")))
+
+
 if __name__ == "__main__":
     unittest.main()
